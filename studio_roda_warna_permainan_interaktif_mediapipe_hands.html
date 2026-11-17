@@ -1,0 +1,1689 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Studio Roda Warna - Cabaran Tangan Ajaib</title>
+    
+    <!-- Fon Mesra Kanak-kanak dari Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google MediaPipe Hands & Camera Utils CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --font-display: 'Fredoka', cursive, sans-serif;
+            --font-body: 'Nunito', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: var(--font-body);
+            background-color: #1e1b4b;
+            touch-action: none;
+        }
+
+        h1, h2, h3, .font-display {
+            font-family: var(--font-display);
+        }
+
+        /* Corak Kertas Kanvas Lukisan */
+        .canvas-paper {
+            background-color: #FFFDF7;
+            background-image: 
+                radial-gradient(#e5e0d5 1px, transparent 1px),
+                radial-gradient(#e5e0d5 1px, #FFFDF7 1px);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+        }
+
+        /* Bingkai Kayu Kuda-kuda Lukisan (Easel) */
+        .wood-frame {
+            background: linear-gradient(135deg, #D97706 0%, #B45309 50%, #92400E 100%);
+            border: 4px solid #78350F;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.3);
+        }
+
+        /* Animasi Melantun & Berdenyut */
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+        .animate-float {
+            animation: floatSlow 3s ease-in-out infinite;
+        }
+
+        @keyframes pulseDanger {
+            0%, 100% { transform: scale(1); background-color: #EF4444; }
+            50% { transform: scale(1.1); background-color: #DC2626; }
+        }
+        .timer-warning {
+            animation: pulseDanger 0.7s infinite;
+            color: white !important;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            80% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Butang Gaya Permainan */
+        .btn-game {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25), 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        .btn-game:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.05);
+        }
+        .btn-game:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25), 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Scrollbar halus untuk galeri hasil */
+        .custom-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(254, 243, 199, 0.6);
+            border-radius: 10px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #D97706;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative select-none">
+
+    <!-- Video Webcam Tersembunyi (Sumber untuk MediaPipe) -->
+    <video id="webcam-video" class="hidden" playsinline autoplay muted></video>
+
+    <!-- Kanvas Utama Permainan (Latar Webcam + Landmarks + Bekas Cat + Zarah Percikan) -->
+    <canvas id="game-canvas" class="absolute inset-0 w-full h-full block z-0"></canvas>
+
+    <!-- Bingkai Hiasan Studio Lukisan di Sekeliling Skrin -->
+    <div class="pointer-events-none absolute inset-0 border-[10px] sm:border-[14px] border-amber-700/90 z-10 shadow-[inset_0_0_40px_rgba(0,0,0,0.45)]"></div>
+
+    <!-- =====================================================================
+         HUD PERMAINAN (PAPARAN ATAS SEMASA BERMAIN)
+         ===================================================================== -->
+    <div id="game-hud" class="hidden absolute inset-x-0 top-0 z-20 p-3 sm:p-5 pointer-events-none flex flex-col items-center">
+        
+        <!-- Baris Atas: Skor/Bintang (Kiri), Kanvas Sasaran (Tengah), Masa & Kawalan (Kanan) -->
+        <div class="w-full max-w-6xl flex items-start justify-between gap-2 sm:gap-4">
+            
+            <!-- Panel Skor & Bintang -->
+            <div class="pointer-events-auto bg-white/95 backdrop-blur-md border-4 border-amber-500 rounded-3xl px-3 py-2 sm:px-5 sm:py-3 shadow-xl flex flex-col gap-1 min-w-[125px] sm:min-w-[175px]">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs sm:text-sm font-extrabold text-amber-800 uppercase tracking-wider">Skor</span>
+                    <span id="hud-score" class="font-display text-xl sm:text-3xl font-bold text-amber-600">0</span>
+                </div>
+                <div class="flex items-center justify-between gap-2 border-t border-amber-200 pt-1">
+                    <span class="text-xs sm:text-sm font-extrabold text-yellow-700 flex items-center gap-1">
+                        ⭐ Bintang
+                    </span>
+                    <span id="hud-stars" class="font-display text-lg sm:text-2xl font-bold text-yellow-500">0</span>
+                </div>
+                <div id="combo-badge" class="hidden text-center bg-gradient-to-r from-pink-500 to-orange-500 text-white text-xs font-bold py-0.5 px-2 rounded-full mt-0.5 shadow">
+                    🔥 Kombo x2!
+                </div>
+            </div>
+
+            <!-- Kuda-kuda Lukisan & Kanvas Cabaran Warna Sekunder (Tengah Atas) -->
+            <div class="flex flex-col items-center -mt-1 sm:mt-0">
+                <!-- Penyangkut Kayu Atas -->
+                <div class="w-16 h-3 bg-amber-800 rounded-t-lg border-x-2 border-t-2 border-amber-950"></div>
+                
+                <!-- Bingkai Kanvas Sasaran -->
+                <div id="target-easel" class="wood-frame rounded-3xl p-2 sm:p-3 w-[230px] sm:w-[340px] md:w-[390px] transition-transform duration-300">
+                    <div class="canvas-paper rounded-2xl p-2.5 sm:p-3.5 flex flex-col items-center text-center relative overflow-hidden border-2 border-amber-200">
+                        
+                        <span class="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-amber-900/70 bg-amber-100 px-3 py-0.5 rounded-full mb-1.5">
+                            Hasilkan Warna Sekunder Ini:
+                        </span>
+
+                        <!-- Paparan Warna Sasaran -->
+                        <div class="flex items-center justify-center gap-3 sm:gap-4 w-full my-0.5">
+                            <!-- Tompok Cat Sasaran -->
+                            <div id="target-swatch" class="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl shadow-inner border-4 border-white ring-2 ring-gray-300 flex items-center justify-center transition-all duration-300" style="background-color: #F97316;">
+                                <span class="text-xl sm:text-2xl drop-shadow">🎨</span>
+                            </div>
+                            
+                            <div class="text-left">
+                                <h2 id="target-color-name" class="font-display text-2xl sm:text-4xl font-bold tracking-wide text-orange-600 leading-none">
+                                    JINGGA
+                                </h2>
+                                <p id="target-hint" class="text-xs sm:text-sm font-bold text-slate-600 mt-1">
+                                    Campur 2 warna asas!
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Petunjuk Visual Formula (Boleh ditogol atau muncul sebagai bantuan lembut) -->
+                        <div id="formula-pill" class="mt-1.5 flex items-center gap-1.5 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 text-xs font-bold text-slate-600">
+                            <span id="hint-dot-1" class="w-3.5 h-3.5 rounded-full bg-slate-300 inline-block border border-white shadow-sm"></span>
+                            <span>+</span>
+                            <span id="hint-dot-2" class="w-3.5 h-3.5 rounded-full bg-slate-300 inline-block border border-white shadow-sm"></span>
+                            <span>=</span>
+                            <span id="hint-result-text" class="text-orange-600 font-extrabold">Jingga</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Pemasa & Butang Kawalan -->
+            <div class="flex flex-col items-end gap-2">
+                <div id="timer-box" class="pointer-events-auto bg-white/95 backdrop-blur-md border-4 border-sky-500 rounded-3xl px-3 py-2 sm:px-5 sm:py-3 shadow-xl flex flex-col items-center min-w-[105px] sm:min-w-[140px] transition-colors">
+                    <span class="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-sky-800">Masa</span>
+                    <div class="flex items-baseline gap-1">
+                        <span id="hud-timer" class="font-display text-2xl sm:text-4xl font-bold text-sky-600">60</span>
+                        <span class="text-xs sm:text-sm font-bold text-sky-700">saat</span>
+                    </div>
+                </div>
+
+                <!-- Baris Butang Kecil: Bunyi, Petunjuk, Keluar -->
+                <div class="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
+                    <button id="btn-toggle-hint" onclick="toggleHintMode()" title="Tunjuk/Sembunyi Petunjuk Warna" class="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold p-2 sm:p-2.5 rounded-2xl border-2 border-amber-600 shadow-md text-xs sm:text-sm flex items-center gap-1 cursor-pointer">
+                        <span>💡</span>
+                        <span class="hidden md:inline">Petunjuk</span>
+                    </button>
+                    <button id="btn-mute" onclick="toggleAudio()" title="Togol Bunyi" class="bg-white/95 hover:bg-gray-100 text-slate-800 font-bold p-2 sm:p-2.5 rounded-2xl border-2 border-slate-300 shadow-md text-sm sm:text-base cursor-pointer">
+                        🔊
+                    </button>
+                    <button onclick="quitToMenu()" title="Kembali ke Menu" class="bg-rose-500 hover:bg-rose-400 text-white font-bold p-2 sm:p-2.5 rounded-2xl border-2 border-rose-700 shadow-md text-xs sm:text-sm cursor-pointer">
+                        ✖
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sepanduk Maklum Balas Dinamik (Feedback Toast di Tengah Skrin) -->
+        <div id="feedback-banner" class="hidden mt-3 px-6 py-2.5 rounded-full font-display text-base sm:text-xl font-bold text-white shadow-2xl border-4 border-white/80 transition-all duration-200 text-center max-w-lg">
+            Hebat! Merah + Kuning = Jingga!
+        </div>
+
+        <!-- Penunjuk Status Penjejakan Tangan -->
+        <div id="hand-status-bar" class="mt-2 bg-slate-900/75 backdrop-blur-sm text-white text-xs sm:text-sm font-semibold px-4 py-1.5 rounded-full border border-white/20 flex items-center gap-3">
+            <span id="left-hand-indicator" class="flex items-center gap-1.5 opacity-60">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span> Tangan Kiri: Tiada
+            </span>
+            <span class="text-white/40">|</span>
+            <span id="right-hand-indicator" class="flex items-center gap-1.5 opacity-60">
+                <span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span> Tangan Kanan: Tiada
+            </span>
+            <span id="sim-mode-badge" class="hidden bg-amber-500 text-slate-950 text-[11px] font-extrabold px-2 py-0.5 rounded-full">
+                Mod Tetikus/Sentuh Aktif
+            </span>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         SKRIN 1: MENU MULA & PANDUAN ISYARAT TANGAN
+         ===================================================================== -->
+    <div id="start-screen" class="absolute inset-0 z-30 flex items-center justify-center p-3 sm:p-6 bg-gradient-to-br from-indigo-950/90 via-purple-900/85 to-amber-950/90 backdrop-blur-md overflow-y-auto">
+        <div class="canvas-paper w-full max-w-4xl rounded-[2rem] border-[6px] border-amber-600 shadow-2xl p-5 sm:p-8 relative my-auto animate-pop">
+            
+            <!-- Hiasan Tompok Warna di Sudut -->
+            <div class="hidden sm:flex absolute -top-6 -left-6 w-16 h-16 rounded-full bg-red-500 border-4 border-white shadow-lg items-center justify-center text-2xl rotate-[-12deg]">🖌️</div>
+            <div class="hidden sm:flex absolute -top-6 -right-6 w-16 h-16 rounded-full bg-yellow-400 border-4 border-white shadow-lg items-center justify-center text-2xl rotate-[12deg]">🎨</div>
+
+            <!-- Tajuk Utama -->
+            <div class="text-center mb-5 sm:mb-6">
+                <span class="inline-block bg-amber-200 text-amber-900 font-extrabold text-xs sm:text-sm px-4 py-1 rounded-full uppercase tracking-wider mb-2 border border-amber-400">
+                    Pendidikan Seni Visual • Aras 2
+                </span>
+                <h1 class="font-display text-3xl sm:text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-amber-500 to-blue-600 drop-shadow-sm">
+                    Studio Roda Warna
+                </h1>
+                <p class="text-slate-600 font-bold text-sm sm:text-lg mt-1">
+                    Cabaran Campuran Warna Asas & Sekunder Menggunakan Kedua-dua Tangan!
+                </p>
+            </div>
+
+            <!-- Grid Kandungan: Panduan Isyarat & Rujukan Roda Warna -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 mb-6">
+                
+                <!-- Kolum Kiri (7 col): Panduan Langkah Demi Langkah -->
+                <div class="md:col-span-7 bg-amber-50/90 border-2 border-amber-300 rounded-3xl p-4 sm:p-5 flex flex-col justify-between">
+                    <h2 class="font-display text-xl sm:text-2xl font-bold text-amber-900 mb-3 flex items-center gap-2">
+                        <span>🖐️</span> Cara Bermain (Panduan Isyarat)
+                    </h2>
+                    
+                    <div class="space-y-3">
+                        <!-- Langkah 1 -->
+                        <div class="flex items-start gap-3 bg-white p-3 rounded-2xl border border-amber-200 shadow-sm">
+                            <div class="w-8 h-8 rounded-full bg-sky-500 text-white font-display font-bold flex items-center justify-center shrink-0 text-lg">1</div>
+                            <div>
+                                <h3 class="font-bold text-slate-800 text-sm sm:text-base">Angkat Kedua-dua Belah Tangan</h3>
+                                <p class="text-xs sm:text-sm text-slate-600">Pastikan tangan <strong>Kiri</strong> dan <strong>Kanan</strong> kelihatan di hadapan kamera webcam anda.</p>
+                            </div>
+                        </div>
+
+                        <!-- Langkah 2 -->
+                        <div class="flex items-start gap-3 bg-white p-3 rounded-2xl border border-amber-200 shadow-sm">
+                            <div class="w-8 h-8 rounded-full bg-emerald-500 text-white font-display font-bold flex items-center justify-center shrink-0 text-lg">2</div>
+                            <div>
+                                <h3 class="font-bold text-slate-800 text-sm sm:text-base">Sentuh 2 Bekas Warna Serentak</h3>
+                                <p class="text-xs sm:text-sm text-slate-600">Gunakan <strong>jari telunjuk kiri</strong> dan <strong>jari telunjuk kanan</strong> untuk menyentuh dua bekas warna asas pada masa yang sama.</p>
+                            </div>
+                        </div>
+
+                        <!-- Langkah 3 -->
+                        <div class="flex items-start gap-3 bg-white p-3 rounded-2xl border border-amber-200 shadow-sm">
+                            <div class="w-8 h-8 rounded-full bg-purple-500 text-white font-display font-bold flex items-center justify-center shrink-0 text-lg">3</div>
+                            <div>
+                                <h3 class="font-bold text-slate-800 text-sm sm:text-base">Hasilkan Warna Sekunder!</h3>
+                                <p class="text-xs sm:text-sm text-slate-600">Padankan campuran warna yang betul mengikut cabaran pada kanvas atas dalam masa <strong>60 saat</strong>.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kolum Kanan (5 col): Kad Nota Roda Warna -->
+                <div class="md:col-span-5 bg-sky-50/90 border-2 border-sky-300 rounded-3xl p-4 sm:p-5 flex flex-col justify-between">
+                    <div>
+                        <h2 class="font-display text-xl sm:text-2xl font-bold text-sky-900 mb-2 flex items-center gap-2">
+                            <span>🎡</span> Formula Roda Warna
+                        </h2>
+                        <p class="text-xs text-sky-800 font-semibold mb-3">
+                            Campuran dua <strong>Warna Asas</strong> menghasilkan <strong>Warna Sekunder</strong>:
+                        </p>
+
+                        <!-- 3 Formula Warna Sekunder -->
+                        <div class="space-y-2.5">
+                            <!-- Jingga -->
+                            <div class="bg-white rounded-2xl p-2.5 border border-orange-200 flex items-center justify-between shadow-sm">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-6 h-6 rounded-full bg-red-500 border-2 border-white shadow" title="Merah"></span>
+                                    <span class="font-bold text-slate-500">+</span>
+                                    <span class="w-6 h-6 rounded-full bg-yellow-400 border-2 border-white shadow" title="Kuning"></span>
+                                    <span class="font-bold text-slate-500">=</span>
+                                </div>
+                                <span class="px-3 py-1 rounded-xl bg-orange-500 text-white font-display font-bold text-sm shadow-sm">
+                                    JINGGA
+                                </span>
+                            </div>
+
+                            <!-- Hijau -->
+                            <div class="bg-white rounded-2xl p-2.5 border border-emerald-200 flex items-center justify-between shadow-sm">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-6 h-6 rounded-full bg-yellow-400 border-2 border-white shadow" title="Kuning"></span>
+                                    <span class="font-bold text-slate-500">+</span>
+                                    <span class="w-6 h-6 rounded-full bg-blue-500 border-2 border-white shadow" title="Biru"></span>
+                                    <span class="font-bold text-slate-500">=</span>
+                                </div>
+                                <span class="px-3 py-1 rounded-xl bg-emerald-500 text-white font-display font-bold text-sm shadow-sm">
+                                    HIJAU
+                                </span>
+                            </div>
+
+                            <!-- Ungu -->
+                            <div class="bg-white rounded-2xl p-2.5 border border-purple-200 flex items-center justify-between shadow-sm">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-6 h-6 rounded-full bg-red-500 border-2 border-white shadow" title="Merah"></span>
+                                    <span class="font-bold text-slate-500">+</span>
+                                    <span class="w-6 h-6 rounded-full bg-blue-500 border-2 border-white shadow" title="Biru"></span>
+                                    <span class="font-bold text-slate-500">=</span>
+                                </div>
+                                <span class="px-3 py-1 rounded-xl bg-purple-600 text-white font-display font-bold text-sm shadow-sm">
+                                    UNGU
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pilihan Tahap Bantuan -->
+                    <div class="mt-4 pt-3 border-t border-sky-200 flex items-center justify-between">
+                        <span class="text-xs font-bold text-sky-900">Bantuan Formula:</span>
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="start-hint-toggle" checked class="sr-only peer">
+                            <div class="relative w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            <span class="ms-2 text-xs font-extrabold text-slate-700">Aktif</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kawasan Butang Mula & Status Kamera -->
+            <div class="flex flex-col items-center gap-3">
+                <button id="btn-start-game" onclick="initAndStartGame()" class="btn-game bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-display text-xl sm:text-2xl font-bold px-8 py-4 rounded-full border-4 border-white flex items-center gap-3 cursor-pointer">
+                    <span>🖌️ Mula Melukis Sekarang!</span>
+                </button>
+                
+                <p id="camera-loading-text" class="hidden text-sm font-bold text-amber-800 animate-pulse flex items-center gap-2">
+                    <span>⏳</span> Menyediakan kamera dan penjejak tangan pintar...
+                </p>
+                
+                <p class="text-[11px] sm:text-xs text-slate-500 font-semibold text-center">
+                    *Sila benarkan akses kamera apabila diminta. (Sokongan sandaran tetikus/sentuhan juga tersedia jika tiada kamera)
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         SKRIN 2: KEPUTUSAN & GALERI HASIL CAMPURAN WARNA
+         ===================================================================== -->
+    <div id="result-screen" class="hidden absolute inset-0 z-30 flex items-center justify-center p-3 sm:p-6 bg-indigo-950/90 backdrop-blur-md overflow-y-auto">
+        <div class="canvas-paper w-full max-w-3xl rounded-[2rem] border-[6px] border-amber-500 shadow-2xl p-5 sm:p-8 text-center animate-pop my-auto">
+            
+            <span class="inline-block bg-amber-100 text-amber-800 font-extrabold text-xs sm:text-sm px-4 py-1 rounded-full uppercase tracking-wider mb-1 border border-amber-300">
+                Masa Tamat! • Laporan Studio
+            </span>
+            <h2 class="font-display text-3xl sm:text-5xl font-bold text-slate-800 mb-2">
+                Tahniah, Pelukis Muda!
+            </h2>
+            <p id="result-rank-title" class="font-display text-lg sm:text-2xl font-bold text-amber-600 mb-4">
+                Pakar Roda Warna Cemerlang!
+            </p>
+
+            <!-- Paparan 3 Bintang Besar -->
+            <div id="result-stars-container" class="flex items-center justify-center gap-3 sm:gap-5 my-4">
+                <span id="star-1" class="text-5xl sm:text-6xl filter grayscale opacity-30 transition-all duration-500">⭐</span>
+                <span id="star-2" class="text-6xl sm:text-7xl filter grayscale opacity-30 transition-all duration-500 -mt-3">⭐</span>
+                <span id="star-3" class="text-5xl sm:text-6xl filter grayscale opacity-30 transition-all duration-500">⭐</span>
+            </div>
+
+            <!-- Ringkasan Statistik -->
+            <div class="grid grid-cols-3 gap-2 sm:gap-4 max-w-lg mx-auto mb-5">
+                <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3">
+                    <div class="text-xs font-bold text-amber-800 uppercase">Jumlah Skor</div>
+                    <div id="final-score" class="font-display text-2xl sm:text-3xl font-bold text-amber-600">0</div>
+                </div>
+                <div class="bg-sky-50 border-2 border-sky-300 rounded-2xl p-3">
+                    <div class="text-xs font-bold text-sky-800 uppercase">Lukisan Siap</div>
+                    <div id="final-mix-count" class="font-display text-2xl sm:text-3xl font-bold text-sky-600">0</div>
+                </div>
+                <div class="bg-purple-50 border-2 border-purple-300 rounded-2xl p-3">
+                    <div class="text-xs font-bold text-purple-800 uppercase">Kombo Terbaik</div>
+                    <div id="final-max-combo" class="font-display text-2xl sm:text-3xl font-bold text-purple-600">0</div>
+                </div>
+            </div>
+
+            <!-- Galeri Hasil Campuran Warna -->
+            <div class="bg-white/90 border-2 border-amber-200 rounded-3xl p-4 mb-6 text-left">
+                <h3 class="font-display text-lg sm:text-xl font-bold text-slate-800 mb-2 flex items-center justify-between">
+                    <span>🖼️ Galeri Hasil Campuran Warna Anda</span>
+                    <span id="gallery-count-badge" class="text-xs font-extrabold bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full">0 karya</span>
+                </h3>
+                
+                <div id="mix-history-list" class="max-h-44 overflow-y-auto custom-scroll pr-1 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <!-- Item sejarah campuran akan dijana secara dinamik di sini -->
+                </div>
+            </div>
+
+            <!-- Butang Tindakan -->
+            <div class="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+                <button onclick="restartGame()" class="btn-game bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-display text-lg sm:text-xl font-bold px-7 py-3.5 rounded-full border-4 border-white cursor-pointer">
+                    🔄 Main Semula
+                </button>
+                <button onclick="quitToMenu()" class="btn-game bg-amber-400 hover:bg-amber-300 text-amber-950 font-display text-lg sm:text-xl font-bold px-7 py-3.5 rounded-full border-4 border-white cursor-pointer">
+                    🏠 Menu Utama
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         LOGIK PERMAINAN, MEDIAPIPE HANDS, WEB AUDIO & RENDERING KANVAS
+         ===================================================================== -->
+    <script>
+        // ==========================================
+        // 1. KONFIGURASI WARNA ASAS & SEKUNDER
+        // ==========================================
+        const PRIMARY_COLORS = [
+            {
+                id: 'merah',
+                name: 'MERAH',
+                hex: '#EF4444',
+                darkHex: '#B91C1C',
+                lightHex: '#FCA5A5',
+                emoji: '🍎'
+            },
+            {
+                id: 'kuning',
+                name: 'KUNING',
+                hex: '#FACC15',
+                darkHex: '#CA8A04',
+                lightHex: '#FEF08A',
+                emoji: '🍋'
+            },
+            {
+                id: 'biru',
+                name: 'BIRU',
+                hex: '#3B82F6',
+                darkHex: '#1D4ED8',
+                lightHex: '#93C5FD',
+                emoji: '🐳'
+            }
+        ];
+
+        const SECONDARY_CHALLENGES = [
+            {
+                id: 'jingga',
+                name: 'JINGGA',
+                hex: '#F97316',
+                textClass: 'text-orange-600',
+                ingredients: ['merah', 'kuning'],
+                formulaLabel: 'Merah + Kuning = Jingga',
+                description: 'Warna buah oren yang ceria!'
+            },
+            {
+                id: 'hijau',
+                name: 'HIJAU',
+                hex: '#22C55E',
+                textClass: 'text-emerald-600',
+                ingredients: ['kuning', 'biru'],
+                formulaLabel: 'Kuning + Biru = Hijau',
+                description: 'Warna daun dan alam semula jadi!'
+            },
+            {
+                id: 'ungu',
+                name: 'UNGU',
+                hex: '#9333EA',
+                textClass: 'text-purple-600',
+                ingredients: ['merah', 'biru'],
+                formulaLabel: 'Merah + Biru = Ungu',
+                description: 'Warna buah anggur dan bunga lavender!'
+            }
+        ];
+
+        // Peta kombinasi untuk mengesan campuran salah (mendidik pemain)
+        const MIX_LOOKUP = {
+            'merah+kuning': 'Jingga',
+            'kuning+merah': 'Jingga',
+            'kuning+biru': 'Hijau',
+            'biru+kuning': 'Hijau',
+            'merah+biru': 'Ungu',
+            'biru+merah': 'Ungu'
+        };
+
+        // ==========================================
+        // 2. PEMBOLEHUBAH KEADAAN (STATE) PERMAINAN
+        // ==========================================
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam-video');
+
+        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'RESULT'
+        let score = 0;
+        let starsEarned = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let timeLeft = 60;
+        let timerInterval = null;
+        let showFormulaHints = true;
+        let currentChallenge = null;
+        let mixHistory = []; // Menyimpan rekod hasil campuran berjaya
+
+        // Keadaan Kamera & MediaPipe
+        let cameraInstance = null;
+        let handsInstance = null;
+        let isCameraReady = false;
+        let useSimulationFallback = false;
+
+        // Penjejakan Tangan (Koordinat dinormalkan 0..1 pada skrin dicerminkan)
+        let leftHandData = null;  // { indexTip: {x, y}, landmarks: [...] }
+        let rightHandData = null; // { indexTip: {x, y}, landmarks: [...] }
+
+        // Sandaran Tetikus / Sentuhan (Untuk ujian tanpa kamera)
+        let simLeftPos = { x: 0.3, y: 0.55 };
+        let simRightPos = { x: 0.7, y: 0.55 };
+        let draggingSimHand = null; // 'left' atau 'right'
+
+        // Bekas Warna Asas di Bawah Skrin (Dikira secara responsif)
+        let paintBuckets = [];
+        let holdProgress = 0; // 0 hingga 1 (Tahan sentuhan serentak ~0.55 saat)
+        let lastFrameTime = performance.now();
+        let wrongCooldown = 0; // Elak spam maklum balas salah berturut-turut
+
+        // Sistem Kesan Visual (Percikan Cat & Aliran Warna)
+        let particles = [];
+        let paintStreams = [];
+        let canvasSplashColor = null;
+        let canvasSplashAlpha = 0;
+
+        // ==========================================
+        // 3. ENJIN AUDIO WEB AUDIO API (BUNYI CERIA)
+        // ==========================================
+        let audioCtx = null;
+        let isMuted = false;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) {
+                    audioCtx = new AudioContextClass();
+                }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function toggleAudio() {
+            isMuted = !isMuted;
+            document.getElementById('btn-mute').textContent = isMuted ? '🔇' : '🔊';
+            if (!isMuted) {
+                initAudio();
+                playPopSound(520);
+            }
+        }
+
+        // Bunyi "Pop / Celup Cat"
+        function playPopSound(freq = 440) {
+            if (isMuted || !audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(freq * 1.45, audioCtx.currentTime + 0.12);
+
+                gain.gain.setValueAtTime(0.22, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.14);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.15);
+            } catch (e) {}
+        }
+
+        // Bunyi "Tada / Melodi Kejayaan Ceria"
+        function playSuccessSound() {
+            if (isMuted || !audioCtx) return;
+            try {
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    const startTime = audioCtx.currentTime + idx * 0.075;
+
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, startTime);
+
+                    gain.gain.setValueAtTime(0.25, startTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.32);
+
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(startTime);
+                    osc.stop(startTime + 0.34);
+                });
+            } catch (e) {}
+        }
+
+        // Bunyi "Boing Lembut" (Campuran kurang tepat)
+        function playGentleWrongSound() {
+            if (isMuted || !audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(210, audioCtx.currentTime + 0.25);
+
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.28);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } catch (e) {}
+        }
+
+        // Bunyi Detik Masa & Tamat Permainan
+        function playTickSound(isFinal = false) {
+            if (isMuted || !audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(isFinal ? 880 : 660, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + (isFinal ? 0.5 : 0.08));
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + (isFinal ? 0.52 : 0.09));
+            } catch (e) {}
+        }
+
+        // ==========================================
+        // 4. PENYEDIAAN MEDIAPIPE HANDS & WEBCAM
+        // ==========================================
+        async function setupMediaPipe() {
+            const loadingText = document.getElementById('camera-loading-text');
+            loadingText.classList.remove('hidden');
+
+            try {
+                if (typeof Hands === 'undefined') {
+                    throw new Error('Pustaka MediaPipe gagal dimuatkan.');
+                }
+
+                handsInstance = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                handsInstance.setOptions({
+                    maxNumHands: 2,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.65,
+                    minTrackingConfidence: 0.6
+                });
+
+                handsInstance.onResults(onMediaPipeResults);
+
+                // Minta akses kamera webcam
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    },
+                    audio: false
+                });
+
+                videoElement.srcObject = stream;
+                await new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        videoElement.play();
+                        resolve();
+                    };
+                });
+
+                isCameraReady = true;
+                useSimulationFallback = false;
+
+                // Gelung pemprosesan bingkai video untuk MediaPipe
+                async function processVideoFrame() {
+                    if (isCameraReady && videoElement.readyState >= 2) {
+                        try {
+                            await handsInstance.send({ image: videoElement });
+                        } catch (err) {
+                            console.warn('Ralat bingkai MediaPipe:', err);
+                        }
+                    }
+                    requestAnimationFrame(processVideoFrame);
+                }
+                requestAnimationFrame(processVideoFrame);
+
+            } catch (error) {
+                console.warn('Kamera tidak tersedia atau disekat, mengaktifkan mod sandaran tetikus/sentuh:', error);
+                isCameraReady = false;
+                useSimulationFallback = true;
+                document.getElementById('sim-mode-badge').classList.remove('hidden');
+            } finally {
+                loadingText.classList.add('hidden');
+            }
+        }
+
+        // Memproses keputusan penjejakan tangan dari MediaPipe
+        function onMediaPipeResults(results) {
+            leftHandData = null;
+            rightHandData = null;
+
+            if (results.multiHandLandmarks && results.multiHandedness) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    const handedness = results.multiHandedness[i];
+
+                    // Cerminkan koordinat X (1 - x) supaya selari dengan paparan cermin webcam
+                    const mirroredLandmarks = landmarks.map(pt => ({
+                        x: 1 - pt.x,
+                        y: pt.y,
+                        z: pt.z
+                    }));
+
+                    // Landmark indeks 8 ialah hujung jari telunjuk (INDEX_FINGER_TIP)
+                    const indexTip = mirroredLandmarks[8];
+
+                    // Nota: Apabila video dicerminkan, label 'Left' dari MediaPipe merujuk tangan kanan pengguna di skrin,
+                    // manakala 'Right' merujuk tangan kiri pengguna. Kita juga boleh tentukan berdasarkan posisi jika perlu,
+                    // tetapi pemetaan standard cermin: label 'Right' -> Tangan Kiri pemain, 'Left' -> Tangan Kanan pemain.
+                    const rawLabel = handedness.label;
+                    const isPlayerLeftHand = (rawLabel === 'Right');
+
+                    if (isPlayerLeftHand && !leftHandData) {
+                        leftHandData = { indexTip, landmarks: mirroredLandmarks };
+                    } else if (!isPlayerLeftHand && !rightHandData) {
+                        rightHandData = { indexTip, landmarks: mirroredLandmarks };
+                    } else if (!leftHandData) {
+                        leftHandData = { indexTip, landmarks: mirroredLandmarks };
+                    } else if (!rightHandData) {
+                        rightHandData = { indexTip, landmarks: mirroredLandmarks };
+                    }
+                }
+            }
+
+            updateHandStatusUI();
+        }
+
+        function updateHandStatusUI() {
+            const leftInd = document.getElementById('left-hand-indicator');
+            const rightInd = document.getElementById('right-hand-indicator');
+
+            if (useSimulationFallback) {
+                leftInd.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span> Kiri: Seret Titik Merah`;
+                leftInd.classList.remove('opacity-60');
+                rightInd.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span> Kanan: Seret Titik Biru`;
+                rightInd.classList.remove('opacity-60');
+                return;
+            }
+
+            if (leftHandData) {
+                leftInd.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block"></span> Tangan Kiri: Dikesan ✓`;
+                leftInd.classList.remove('opacity-60');
+            } else {
+                leftInd.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span> Tangan Kiri: Tiada`;
+                leftInd.classList.add('opacity-60');
+            }
+
+            if (rightHandData) {
+                rightInd.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block"></span> Tangan Kanan: Dikesan ✓`;
+                rightInd.classList.remove('opacity-60');
+            } else {
+                rightInd.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span> Tangan Kanan: Tiada`;
+                rightInd.classList.add('opacity-60');
+            }
+        }
+
+        // ==========================================
+        // 5. SUSUN ATUR RESPONSIF BEKAS WARNA ASAS
+        // ==========================================
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            calculateBucketPositions();
+        }
+
+        function calculateBucketPositions() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // Saiz bekas warna menyesuaikan skrin telefon, tablet dan desktop
+            const bucketRadius = Math.max(46, Math.min(82, w * 0.085, h * 0.115));
+            const centerY = h - bucketRadius - Math.max(24, h * 0.045);
+            const spacing = Math.min(w * 0.28, bucketRadius * 2.9);
+
+            paintBuckets = PRIMARY_COLORS.map((color, index) => {
+                const offsetFromCenter = (index - 1) * spacing;
+                return {
+                    ...color,
+                    x: (w / 2) + offsetFromCenter,
+                    y: centerY,
+                    radius: bucketRadius,
+                    touchedByLeft: false,
+                    touchedByRight: false,
+                    hoverScale: 1
+                };
+            });
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // ==========================================
+        // 6. KAWALAN ALIRAN PERMAINAN & CABARAN
+        // ==========================================
+        async function initAndStartGame() {
+            initAudio();
+            showFormulaHints = document.getElementById('start-hint-toggle').checked;
+
+            if (!isCameraReady && !useSimulationFallback) {
+                await setupMediaPipe();
+            }
+
+            startNewSession();
+        }
+
+        function startNewSession() {
+            score = 0;
+            starsEarned = 0;
+            combo = 0;
+            maxCombo = 0;
+            timeLeft = 60;
+            mixHistory = [];
+            particles = [];
+            paintStreams = [];
+            holdProgress = 0;
+            wrongCooldown = 0;
+
+            gameState = 'PLAYING';
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+
+            updateHUD();
+            generateNextChallenge(true);
+
+            // Mulakan pemasa undur 60 saat
+            if (timerInterval) clearInterval(timerInterval);
+            const timerBox = document.getElementById('timer-box');
+            timerBox.classList.remove('timer-warning');
+
+            timerInterval = setInterval(() => {
+                if (gameState !== 'PLAYING') return;
+                timeLeft--;
+                updateHUD();
+
+                if (timeLeft <= 10 && timeLeft > 0) {
+                    timerBox.classList.add('timer-warning');
+                    playTickSound(false);
+                } else if (timeLeft <= 0) {
+                    playTickSound(true);
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function restartGame() {
+            initAudio();
+            startNewSession();
+        }
+
+        function quitToMenu() {
+            gameState = 'MENU';
+            if (timerInterval) clearInterval(timerInterval);
+            document.getElementById('game-hud').classList.add('hidden');
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+        }
+
+        function toggleHintMode() {
+            showFormulaHints = !showFormulaHints;
+            updateChallengeUI();
+            playPopSound(600);
+        }
+
+        function generateNextChallenge(isFirst = false) {
+            let candidates = SECONDARY_CHALLENGES;
+            if (!isFirst && currentChallenge) {
+                // Elak warna yang sama berulang berturut-turut supaya lebih dinamik
+                candidates = SECONDARY_CHALLENGES.filter(c => c.id !== currentChallenge.id);
+            }
+            const next = candidates[Math.floor(Math.random() * candidates.length)];
+            currentChallenge = next;
+            updateChallengeUI();
+        }
+
+        function updateChallengeUI() {
+            if (!currentChallenge) return;
+
+            const swatch = document.getElementById('target-swatch');
+            const nameEl = document.getElementById('target-color-name');
+            const hintEl = document.getElementById('target-hint');
+            const formulaPill = document.getElementById('formula-pill');
+
+            swatch.style.backgroundColor = currentChallenge.hex;
+            nameEl.textContent = currentChallenge.name;
+            nameEl.className = `font-display text-2xl sm:text-4xl font-bold tracking-wide leading-none ${currentChallenge.textClass}`;
+            hintEl.textContent = currentChallenge.description;
+
+            const dot1 = document.getElementById('hint-dot-1');
+            const dot2 = document.getElementById('hint-dot-2');
+            const resText = document.getElementById('hint-result-text');
+
+            if (showFormulaHints) {
+                const c1 = PRIMARY_COLORS.find(c => c.id === currentChallenge.ingredients[0]);
+                const c2 = PRIMARY_COLORS.find(c => c.id === currentChallenge.ingredients[1]);
+                dot1.style.backgroundColor = c1.hex;
+                dot2.style.backgroundColor = c2.hex;
+                resText.textContent = currentChallenge.name;
+                resText.className = `font-extrabold ${currentChallenge.textClass}`;
+                formulaPill.classList.remove('opacity-40');
+            } else {
+                dot1.style.backgroundColor = '#CBD5E1';
+                dot2.style.backgroundColor = '#CBD5E1';
+                resText.textContent = '? + ? = ' + currentChallenge.name;
+                resText.className = 'font-extrabold text-slate-600';
+                formulaPill.classList.add('opacity-70');
+            }
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-score').textContent = score;
+            document.getElementById('hud-stars').textContent = starsEarned;
+            document.getElementById('hud-timer').textContent = Math.max(0, timeLeft);
+
+            const comboBadge = document.getElementById('combo-badge');
+            if (combo >= 2) {
+                comboBadge.textContent = `🔥 Kombo x${combo}!`;
+                comboBadge.classList.remove('hidden');
+            } else {
+                comboBadge.classList.add('hidden');
+            }
+        }
+
+        let feedbackTimeout = null;
+        function showFeedbackBanner(message, bgColorClass) {
+            const banner = document.getElementById('feedback-banner');
+            banner.textContent = message;
+            banner.className = `mt-3 px-6 py-2.5 rounded-full font-display text-base sm:text-xl font-bold text-white shadow-2xl border-4 border-white/80 transition-all duration-200 text-center max-w-lg animate-pop ${bgColorClass}`;
+            banner.classList.remove('hidden');
+
+            if (feedbackTimeout) clearTimeout(feedbackTimeout);
+            feedbackTimeout = setTimeout(() => {
+                banner.classList.add('hidden');
+            }, 2200);
+        }
+
+        // ==========================================
+        // 7. LOGIK PENGESANAN SENTUHAN SERENTAK & CAMPURAN
+        // ==========================================
+        function updateGameLogic(dt) {
+            if (gameState !== 'PLAYING') return;
+
+            if (wrongCooldown > 0) wrongCooldown -= dt;
+
+            // Dapatkan koordinat jari telunjuk kiri & kanan dalam piksel kanvas
+            let leftTipPx = null;
+            let rightTipPx = null;
+
+            if (useSimulationFallback) {
+                leftTipPx = { x: simLeftPos.x * canvas.width, y: simLeftPos.y * canvas.height };
+                rightTipPx = { x: simRightPos.x * canvas.width, y: simRightPos.y * canvas.height };
+            } else {
+                if (leftHandData && leftHandData.indexTip) {
+                    leftTipPx = {
+                        x: leftHandData.indexTip.x * canvas.width,
+                        y: leftHandData.indexTip.y * canvas.height
+                    };
+                }
+                if (rightHandData && rightHandData.indexTip) {
+                    rightTipPx = {
+                        x: rightHandData.indexTip.x * canvas.width,
+                        y: rightHandData.indexTip.y * canvas.height
+                    };
+                }
+            }
+
+            let leftBucket = null;
+            let rightBucket = null;
+
+            // Semak perlanggaran jari telunjuk dengan setiap bekas warna asas
+            paintBuckets.forEach(bucket => {
+                const prevLeft = bucket.touchedByLeft;
+                const prevRight = bucket.touchedByRight;
+                bucket.touchedByLeft = false;
+                bucket.touchedByRight = false;
+
+                if (leftTipPx) {
+                    const distL = Math.hypot(leftTipPx.x - bucket.x, leftTipPx.y - bucket.y);
+                    if (distL <= bucket.radius * 1.08) {
+                        bucket.touchedByLeft = true;
+                        leftBucket = bucket;
+                        if (!prevLeft) playPopSound(480);
+                    }
+                }
+
+                if (rightTipPx) {
+                    const distR = Math.hypot(rightTipPx.x - bucket.x, rightTipPx.y - bucket.y);
+                    if (distR <= bucket.radius * 1.08) {
+                        bucket.touchedByRight = true;
+                        rightBucket = bucket;
+                        if (!prevRight) playPopSound(560);
+                    }
+                }
+
+                const isHovered = bucket.touchedByLeft || bucket.touchedByRight;
+                const targetScale = isHovered ? 1.12 : 1.0;
+                bucket.hoverScale += (targetScale - bucket.hoverScale) * 0.2;
+            });
+
+            // Jika kedua-dua jari telunjuk menyentuh bekas warna secara serentak!
+            if (leftBucket && rightBucket) {
+                // Tambah kemajuan tahan (~0.5 saat untuk mengesahkan pilihan serentak)
+                holdProgress += dt / 0.5;
+                if (holdProgress >= 1) {
+                    holdProgress = 0;
+                    evaluateColorMix(leftBucket, rightBucket);
+                }
+            } else {
+                // Kurangkan kemajuan secara beransur-ansur jika satu jari diangkat
+                holdProgress = Math.max(0, holdProgress - dt * 2.5);
+            }
+        }
+
+        function evaluateColorMix(bucket1, bucket2) {
+            // Cipta aliran cat terbang dari kedua-dua bekas ke kanvas atas
+            const targetX = canvas.width / 2;
+            const targetY = Math.min(140, canvas.height * 0.16);
+            spawnPaintStream(bucket1.x, bucket1.y, targetX, targetY, bucket1.hex);
+            spawnPaintStream(bucket2.x, bucket2.y, targetX, targetY, bucket2.hex);
+
+            // Kes 1: Kedua-dua jari menyentuh bekas warna yang SAMA
+            if (bucket1.id === bucket2.id) {
+                if (wrongCooldown <= 0) {
+                    wrongCooldown = 1.6;
+                    combo = 0;
+                    updateHUD();
+                    playGentleWrongSound();
+                    showFeedbackBanner(
+                        `Sentuh DUA warna asas yang berbeza! (${bucket1.name} + ${bucket2.name} tetap ${bucket1.name})`,
+                        'bg-amber-600'
+                    );
+                }
+                return;
+            }
+
+            // Semak sama ada kombinasi sepadan dengan cabaran warna sekunder semasa
+            const req = currentChallenge.ingredients;
+            const isMatch = (req.includes(bucket1.id) && req.includes(bucket2.id));
+
+            if (isMatch) {
+                // BERJAYA!
+                combo++;
+                if (combo > maxCombo) maxCombo = combo;
+
+                const bonusPoints = (combo - 1) * 25;
+                const earned = 100 + bonusPoints;
+                score += earned;
+                starsEarned++;
+
+                // Simpan ke galeri hasil campuran
+                mixHistory.unshift({
+                    secondaryName: currentChallenge.name,
+                    secondaryHex: currentChallenge.hex,
+                    color1Name: bucket1.name,
+                    color1Hex: bucket1.hex,
+                    color2Name: bucket2.name,
+                    color2Hex: bucket2.hex,
+                    points: earned
+                });
+
+                updateHUD();
+                playSuccessSound();
+
+                // Kesan percikan cat meriah & kilauan kanvas
+                triggerColorCelebration(currentChallenge.hex, bucket1.hex, bucket2.hex);
+                showFeedbackBanner(
+                    `🎉 Hebat! ${bucket1.name} + ${bucket2.name} = ${currentChallenge.name}! (+${earned})`,
+                    'bg-emerald-600'
+                );
+
+                // Jana cabaran warna sekunder baharu
+                generateNextChallenge(false);
+                wrongCooldown = 0.8;
+            } else {
+                // SALAH KOMBINASI (Contoh: Sasaran Hijau, tetapi pemain campur Merah + Biru = Ungu)
+                if (wrongCooldown <= 0) {
+                    wrongCooldown = 1.8;
+                    combo = 0;
+                    updateHUD();
+                    playGentleWrongSound();
+
+                    const actualResult = MIX_LOOKUP[`${bucket1.id}+${bucket2.id}`] || 'Warna Lain';
+                    showFeedbackBanner(
+                        `Oops! ${bucket1.name} + ${bucket2.name} menghasilkan ${actualResult}. Cuba cari ${currentChallenge.name}!`,
+                        'bg-rose-600'
+                    );
+                }
+            }
+        }
+
+        // ==========================================
+        // 8. KESAN PERCIKAN CAT & ZARAH BERWARNA-WARNI
+        // ==========================================
+        function spawnPaintStream(startX, startY, endX, endY, colorHex) {
+            for (let i = 0; i < 14; i++) {
+                paintStreams.push({
+                    x: startX + (Math.random() - 0.5) * 24,
+                    y: startY + (Math.random() - 0.5) * 24,
+                    startX,
+                    startY,
+                    endX: endX + (Math.random() - 0.5) * 60,
+                    endY: endY + (Math.random() - 0.5) * 30,
+                    progress: -i * 0.03,
+                    speed: 2.6 + Math.random() * 0.6,
+                    size: 10 + Math.random() * 10,
+                    color: colorHex
+                });
+            }
+        }
+
+        function triggerColorCelebration(mainHex, c1Hex, c2Hex) {
+            canvasSplashColor = mainHex;
+            canvasSplashAlpha = 0.42;
+
+            const originX = canvas.width / 2;
+            const originY = Math.min(145, canvas.height * 0.17);
+            const palette = [mainHex, c1Hex, c2Hex, '#FACC15', '#FFFFFF'];
+
+            // Percikan cat besar di sekitar kanvas lukisan atas
+            for (let i = 0; i < 65; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 3 + Math.random() * 13;
+                particles.push({
+                    x: originX + (Math.random() - 0.5) * 140,
+                    y: originY + (Math.random() - 0.5) * 50,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 2,
+                    gravity: 0.28,
+                    size: 6 + Math.random() * 14,
+                    color: palette[Math.floor(Math.random() * palette.length)],
+                    alpha: 1,
+                    decay: 0.014 + Math.random() * 0.012,
+                    isStar: Math.random() > 0.72
+                });
+            }
+
+            // Animasi berdenyut pada bingkai kuda-kuda lukisan
+            const easel = document.getElementById('target-easel');
+            easel.style.transform = 'scale(1.08)';
+            setTimeout(() => {
+                easel.style.transform = 'scale(1)';
+            }, 260);
+        }
+
+        function updateAndDrawEffects(dt) {
+            // 1. Kilauan percikan warna pada latar
+            if (canvasSplashAlpha > 0 && canvasSplashColor) {
+                ctx.save();
+                ctx.fillStyle = canvasSplashColor;
+                ctx.globalAlpha = canvasSplashAlpha;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.restore();
+                canvasSplashAlpha = Math.max(0, canvasSplashAlpha - dt * 0.65);
+            }
+
+            // 2. Aliran cat dari bekas ke kanvas atas
+            for (let i = paintStreams.length - 1; i >= 0; i--) {
+                const s = paintStreams[i];
+                s.progress += dt * s.speed;
+                if (s.progress >= 1) {
+                    paintStreams.splice(i, 1);
+                    continue;
+                }
+                if (s.progress < 0) continue;
+
+                // Lengkungan parabola halus ke atas
+                const t = s.progress;
+                const curX = s.startX + (s.endX - s.startX) * t;
+                const arcOffset = Math.sin(t * Math.PI) * -90;
+                const curY = s.startY + (s.endY - s.startY) * t + arcOffset;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(curX, curY, s.size * (1 - t * 0.35), 0, Math.PI * 2);
+                ctx.fillStyle = s.color;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 3. Zarah percikan cat & bintang kejayaan
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += p.gravity;
+                p.alpha -= p.decay;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+
+                if (p.isStar) {
+                    drawStarShape(ctx, p.x, p.y, 5, p.size, p.size * 0.45);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        function drawStarShape(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+            let rot = (Math.PI / 2) * 3;
+            let x = cx;
+            let y = cy;
+            const step = Math.PI / spikes;
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - outerRadius);
+            for (let i = 0; i < spikes; i++) {
+                x = cx + Math.cos(rot) * outerRadius;
+                y = cy + Math.sin(rot) * outerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+
+                x = cx + Math.cos(rot) * innerRadius;
+                y = cy + Math.sin(rot) * innerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+            }
+            ctx.lineTo(cx, cy - outerRadius);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // ==========================================
+        // 9. LUKISAN VISUAL KANVAS (WEBCAM, BEKAS & TANGAN)
+        // ==========================================
+        function drawWebcamBackground() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            if (isCameraReady && videoElement.readyState >= 2) {
+                // Kira nisbah aspek 'object-cover' supaya video penuh skrin tanpa herot
+                const vidW = videoElement.videoWidth || 1280;
+                const vidH = videoElement.videoHeight || 720;
+                const scale = Math.max(w / vidW, h / vidH);
+                const drawW = vidW * scale;
+                const drawH = vidH * scale;
+                const offsetX = (w - drawW) / 2;
+                const offsetY = (h - drawH) / 2;
+
+                ctx.save();
+                // Cerminkan paparan webcam secara mendatar
+                ctx.translate(w, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(videoElement, offsetX, offsetY, drawW, drawH);
+                ctx.restore();
+
+                // Lapisan lembut supaya bekas warna & teks HUD sentiasa jelas dibaca
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.22)';
+                ctx.fillRect(0, 0, w, h);
+            } else {
+                // Latar studio lukisan ceria sekiranya kamera tiada (Mod Sandaran)
+                const grad = ctx.createLinearGradient(0, 0, 0, h);
+                grad.addColorStop(0, '#FEF3C7');
+                grad.addColorStop(0.5, '#E0F2FE');
+                grad.addColorStop(1, '#FDE68A');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, w, h);
+
+                // Grid halus studio
+                ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+                ctx.lineWidth = 1;
+                for (let gx = 0; gx < w; gx += 40) {
+                    ctx.beginPath();
+                    ctx.moveTo(gx, 0);
+                    ctx.lineTo(gx, h);
+                    ctx.stroke();
+                }
+                for (let gy = 0; gy < h; gy += 40) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, gy);
+                    ctx.lineTo(w, gy);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function drawPaintBuckets() {
+            if (gameState !== 'PLAYING') return;
+
+            paintBuckets.forEach(bucket => {
+                ctx.save();
+                ctx.translate(bucket.x, bucket.y);
+                ctx.scale(bucket.hoverScale, bucket.hoverScale);
+
+                const r = bucket.radius;
+
+                // Bayang lembut di bawah bekas
+                ctx.beginPath();
+                ctx.arc(0, 8, r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+                ctx.fill();
+
+                // Badan Bekas Cat (Bentuk baldi/palet bulat berbingkai tebal)
+                ctx.beginPath();
+                ctx.arc(0, 0, r, 0, Math.PI * 2);
+                ctx.fillStyle = bucket.hex;
+                ctx.fill();
+
+                // Kilauan cat basah di bahagian atas dalam bekas
+                ctx.beginPath();
+                ctx.ellipse(-r * 0.22, -r * 0.28, r * 0.32, r * 0.16, -0.5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.38)';
+                ctx.fill();
+
+                // Bingkai luar bekas
+                ctx.lineWidth = (bucket.touchedByLeft || bucket.touchedByRight) ? 8 : 5;
+                ctx.strokeStyle = (bucket.touchedByLeft || bucket.touchedByRight) ? '#FFFFFF' : bucket.darkHex;
+                ctx.stroke();
+
+                // Gelang Kemajuan Tahan Serentak apabila kedua-dua tangan menyentuh bekas
+                if (holdProgress > 0 && (bucket.touchedByLeft || bucket.touchedByRight)) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r + 10, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * holdProgress));
+                    ctx.lineWidth = 7;
+                    ctx.strokeStyle = '#10B981';
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
+                }
+
+                // Label Nama Warna Asas dalam Bahasa Melayu
+                ctx.fillStyle = bucket.id === 'kuning' ? '#422006' : '#FFFFFF';
+                ctx.font = `800 ${Math.max(15, Math.round(r * 0.27))}px 'Fredoka', sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(bucket.name, 0, r * 0.06);
+
+                // Sub-label "WARNA ASAS"
+                ctx.font = `700 ${Math.max(9, Math.round(r * 0.14))}px 'Nunito', sans-serif`;
+                ctx.globalAlpha = 0.85;
+                ctx.fillText('WARNA ASAS', 0, r * 0.36);
+                ctx.globalAlpha = 1;
+
+                // Lencana penunjuk tangan (KIRI / KANAN) jika sedang disentuh
+                if (bucket.touchedByLeft) {
+                    drawHandBadge(ctx, -r * 0.45, -r * 0.88, 'KIRI', '#F43F5E');
+                }
+                if (bucket.touchedByRight) {
+                    drawHandBadge(ctx, r * 0.45, -r * 0.88, 'KANAN', '#0EA5E9');
+                }
+
+                ctx.restore();
+            });
+        }
+
+        function drawHandBadge(ctx, x, y, text, bgColor) {
+            ctx.save();
+            ctx.fillStyle = bgColor;
+            ctx.beginPath();
+            ctx.roundRect(x - 26, y - 12, 52, 24, 12);
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.stroke();
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = "800 11px 'Nunito', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x, y);
+            ctx.restore();
+        }
+
+        // Lukis Rangka Sendi Tangan (MediaPipe Landmarks) & Kursor Jari Telunjuk
+        function drawHandOverlays() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // Sambungan sendi standard MediaPipe Hands
+            const HAND_CONNECTIONS = [
+                [0,1],[1,2],[2,3],[3,4],       // Ibu jari
+                [0,5],[5,6],[6,7],[7,8],       // Jari telunjuk
+                [5,9],[9,10],[10,11],[11,12],  // Jari hantu
+                [9,13],[13,14],[14,15],[15,16],// Jari manis
+                [13,17],[17,18],[18,19],[19,20],// Jari kelingking
+                [0,17]                         // Tapak tangan
+            ];
+
+            function renderSingleHand(handObj, label, themeColor) {
+                if (!handObj || !handObj.landmarks) return;
+                const pts = handObj.landmarks;
+
+                ctx.save();
+                // Lukis garisan penyambung tulang tangan
+                ctx.strokeStyle = themeColor;
+                ctx.lineWidth = 3.5;
+                ctx.globalAlpha = 0.75;
+
+                HAND_CONNECTIONS.forEach(([i, j]) => {
+                    const p1 = pts[i];
+                    const p2 = pts[j];
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x * w, p1.y * h);
+                    ctx.lineTo(p2.x * w, p2.y * h);
+                    ctx.stroke();
+                });
+
+                // Lukis titik sendi
+                pts.forEach((pt, idx) => {
+                    if (idx === 8) return; // Hujung jari telunjuk dilukis khas di bawah
+                    ctx.beginPath();
+                    ctx.arc(pt.x * w, pt.y * h, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fill();
+                });
+                ctx.restore();
+
+                // Lukis Penanda Khas Hujung Jari Telunjuk (Landmark 8)
+                const tip = handObj.indexTip;
+                drawIndexBrushCursor(tip.x * w, tip.y * h, label, themeColor);
+            }
+
+            if (useSimulationFallback && gameState === 'PLAYING') {
+                drawIndexBrushCursor(simLeftPos.x * w, simLeftPos.y * h, 'KIRI (Seret)', '#F43F5E');
+                drawIndexBrushCursor(simRightPos.x * w, simRightPos.y * h, 'KANAN (Seret)', '#0EA5E9');
+            } else {
+                renderSingleHand(leftHandData, 'KIRI', '#F43F5E');
+                renderSingleHand(rightHandData, 'KANAN', '#0EA5E9');
+            }
+        }
+
+        function drawIndexBrushCursor(x, y, label, color) {
+            ctx.save();
+
+            // Lingkaran aura berdenyut di hujung jari telunjuk
+            ctx.beginPath();
+            ctx.arc(x, y, 22, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.28;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+
+            // Titik teras berus cat
+            ctx.beginPath();
+            ctx.arc(x, y, 12, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.lineWidth = 3.5;
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.stroke();
+
+            // Label kecil di atas jari
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+            ctx.beginPath();
+            ctx.roundRect(x - 32, y - 38, 64, 20, 10);
+            ctx.fill();
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = "800 10px 'Nunito', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, x, y - 28);
+
+            ctx.restore();
+        }
+
+        // ==========================================
+        // 10. INTERAKSI SANDARAN TETIKUS / SENTUHAN
+        // ==========================================
+        function handlePointerDown(clientX, clientY) {
+            if (!useSimulationFallback || gameState !== 'PLAYING') return;
+            const w = canvas.width;
+            const h = canvas.height;
+            const distL = Math.hypot(clientX - simLeftPos.x * w, clientY - simLeftPos.y * h);
+            const distR = Math.hypot(clientX - simRightPos.x * w, clientY - simRightPos.y * h);
+
+            if (distL < 60 && distL <= distR) {
+                draggingSimHand = 'left';
+            } else if (distR < 60) {
+                draggingSimHand = 'right';
+            } else {
+                // Klik terus pada bekas warna untuk menggerakkan tangan terdekat
+                if (clientX < w / 2) {
+                    simLeftPos = { x: clientX / w, y: clientY / h };
+                    draggingSimHand = 'left';
+                } else {
+                    simRightPos = { x: clientX / w, y: clientY / h };
+                    draggingSimHand = 'right';
+                }
+            }
+        }
+
+        function handlePointerMove(clientX, clientY) {
+            if (!useSimulationFallback || !draggingSimHand || gameState !== 'PLAYING') return;
+            const x = Math.max(0.05, Math.min(0.95, clientX / canvas.width));
+            const y = Math.max(0.15, Math.min(0.95, clientY / canvas.height));
+            if (draggingSimHand === 'left') {
+                simLeftPos = { x, y };
+            } else if (draggingSimHand === 'right') {
+                simRightPos = { x, y };
+            }
+        }
+
+        function handlePointerUp() {
+            draggingSimHand = null;
+        }
+
+        canvas.addEventListener('mousedown', (e) => handlePointerDown(e.clientX, e.clientY));
+        window.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY));
+        window.addEventListener('mouseup', handlePointerUp);
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: true });
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: true });
+        window.addEventListener('touchend', handlePointerUp);
+
+        // ==========================================
+        // 11. SKRIN KEPUTUSAN & GALERI CAMPURAN
+        // ==========================================
+        function endGame() {
+            gameState = 'RESULT';
+            if (timerInterval) clearInterval(timerInterval);
+
+            document.getElementById('game-hud').classList.add('hidden');
+            document.getElementById('result-screen').classList.remove('hidden');
+
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('final-mix-count').textContent = starsEarned;
+            document.getElementById('final-max-combo').textContent = maxCombo;
+
+            // Penarafan 1 hingga 3 bintang berdasarkan pencapaian murid
+            let starRating = 1;
+            let rankTitle = 'Pelukis Muda Berbakat! Teruskan Usaha!';
+            if (starsEarned >= 8 || score >= 900) {
+                starRating = 3;
+                rankTitle = '🌟 Maestro Roda Warna Terunggul! 🌟';
+            } else if (starsEarned >= 4 || score >= 400) {
+                starRating = 2;
+                rankTitle = '🎨 Artis Warna Sekunder Hebat!';
+            }
+
+            document.getElementById('result-rank-title').textContent = rankTitle;
+
+            // Tetapkan semula dan animasikan bintang
+            [1, 2, 3].forEach(num => {
+                const starEl = document.getElementById(`star-${num}`);
+                starEl.classList.add('grayscale', 'opacity-30');
+                starEl.classList.remove('scale-110');
+                if (num <= starRating) {
+                    setTimeout(() => {
+                        starEl.classList.remove('grayscale', 'opacity-30');
+                        starEl.classList.add('scale-110');
+                        playPopSound(500 + num * 140);
+                    }, num * 300);
+                }
+            });
+
+            // Bina senarai Galeri Hasil Campuran Warna
+            const listContainer = document.getElementById('mix-history-list');
+            const badge = document.getElementById('gallery-count-badge');
+            badge.textContent = `${mixHistory.length} karya`;
+            listContainer.innerHTML = '';
+
+            if (mixHistory.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="col-span-full text-center py-6 text-slate-500 font-bold text-sm">
+                        Belum ada campuran warna berjaya dihasilkan. Cuba lagi pada pusingan seterusnya!
+                    </div>
+                `;
+            } else {
+                mixHistory.forEach((item, idx) => {
+                    const card = document.createElement('div');
+                    card.className = 'flex items-center justify-between bg-amber-50/80 border border-amber-200 rounded-2xl p-2.5 shadow-sm';
+                    card.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-extrabold text-slate-400 w-5">#${mixHistory.length - idx}</span>
+                            <span class="w-5 h-5 rounded-full border border-white shadow" style="background-color:${item.color1Hex}" title="${item.color1Name}"></span>
+                            <span class="text-xs font-bold text-slate-600">+</span>
+                            <span class="w-5 h-5 rounded-full border border-white shadow" style="background-color:${item.color2Hex}" title="${item.color2Name}"></span>
+                            <span class="text-xs font-bold text-slate-600">=</span>
+                            <span class="px-2.5 py-0.5 rounded-lg text-white font-display font-bold text-xs shadow-sm" style="background-color:${item.secondaryHex}">
+                                ${item.secondaryName}
+                            </span>
+                        </div>
+                        <span class="text-xs font-extrabold text-emerald-600">+${item.points}</span>
+                    `;
+                    listContainer.appendChild(card);
+                });
+            }
+        }
+
+        // ==========================================
+        // 12. GELUNG ANIMASI UTAMA (MAIN LOOP)
+        // ==========================================
+        function gameLoop(now) {
+            const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+            lastFrameTime = now;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Lukis latar belakang webcam masa nyata
+            drawWebcamBackground();
+
+            // 2. Kemas kini logik & lukis elemen permainan
+            if (gameState === 'PLAYING') {
+                updateGameLogic(dt);
+                drawPaintBuckets();
+                updateAndDrawEffects(dt);
+                drawHandOverlays();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Mulakan saiz kanvas dan gelung animasi apabila halaman siap dimuatkan
+        window.onload = function () {
+            resizeCanvas();
+            lastFrameTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
